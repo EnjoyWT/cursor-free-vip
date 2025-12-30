@@ -38,19 +38,16 @@ get_downloads_dir() {
 
 # Get latest version
 get_latest_version() {
-    echo -e "${CYAN}ℹ️ Checking latest version...${NC}"
-    latest_release=$(curl -s https://api.github.com/repos/yeongpin/cursor-free-vip/releases/latest) || {
-        echo -e "${RED}❌ Cannot get latest version information${NC}"
-        exit 1
-    }
+    echo -e "${CYAN}ℹ️ Skipping remote version check (using local/default)...${NC}"
+    if [ -f ".env" ]; then
+        VERSION=$(grep "VERSION=" .env | head -n 1 | cut -d'=' -f2 | tr -d ' "' | tr -d "'")
+    fi
     
-    VERSION=$(echo "$latest_release" | grep -o '"tag_name": ".*"' | cut -d'"' -f4 | tr -d 'v')
     if [ -z "$VERSION" ]; then
-        echo -e "${RED}❌ Failed to parse version from GitHub API response:\n${latest_release}"
-        exit 1
+        VERSION="1.8.11"
     fi
 
-    echo -e "${GREEN}✅ Found latest version: ${VERSION}${NC}"
+    echo -e "${GREEN}✅ Version: ${VERSION}${NC}"
 }
 
 # Detect system type and architecture
@@ -84,6 +81,39 @@ detect_os() {
 
 # Install and download
 install_cursor_free_vip() {
+    # If main.py exists in current directory or parent, suggest running from source
+    if [ -f "main.py" ] || [ -f "../main.py" ]; then
+        local base_dir="."
+        [ -f "../main.py" ] && base_dir=".."
+        
+        echo -e "${GREEN}✅ Detected source code in ${base_dir}${NC}"
+        echo -e "${CYAN}ℹ️ Do you want to run from source? (y/n)${NC}"
+        read -r run_source
+        if [[ "$run_source" =~ ^[Yy]$ ]]; then
+            echo -e "${CYAN}ℹ️ Installing dependencies...${NC}"
+            if command -v python3 >/dev/null 2>&1; then
+                python3 -m pip install -r "${base_dir}/requirements.txt"
+                echo -e "${CYAN}ℹ️ Starting program...${NC}"
+                
+                # Check if we need sudo on macOS/Linux
+                if [[ "$(uname)" == "Darwin" || "$(uname)" == "Linux" ]]; then
+                    if [ "$EUID" -ne 0 ]; then
+                        echo -e "${YELLOW}⚠️ Requesting administrator privileges (sudo)...${NC}"
+                        cd "${base_dir}" && sudo python3 main.py
+                    else
+                        cd "${base_dir}" && python3 main.py
+                    fi
+                else
+                    cd "${base_dir}" && python3 main.py
+                fi
+                return
+            else
+                echo -e "${RED}❌ python3 not found. Please install Python 3.${NC}"
+                exit 1
+            fi
+        fi
+    fi
+
     local downloads_dir=$(get_downloads_dir)
     local binary_name="CursorFreeVIP_${VERSION}_${OS}"
     local binary_path="${downloads_dir}/${binary_name}"
